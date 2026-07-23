@@ -524,7 +524,11 @@ class FirecrawlWebSearchProvider(WebSearchProvider):
                         metadata = {}
 
                 title = metadata.get("title", "")
-                final_url = metadata.get("sourceURL", url)
+                final_url = (
+                    metadata.get("sourceURL")
+                    or metadata.get("source_url")
+                    or url
+                )
 
                 # Re-check SSRF safety after any redirect reported by Firecrawl.
                 if not is_safe_url(final_url):
@@ -566,6 +570,30 @@ class FirecrawlWebSearchProvider(WebSearchProvider):
                                 "rule": final_blocked["rule"],
                                 "source": final_blocked["source"],
                             },
+                        }
+                    )
+                    continue
+
+                # Firecrawl can return a successful API envelope even when the
+                # upstream page fetch failed. Do not expose an HTTP error page as
+                # successfully extracted content: callers may otherwise index a
+                # CDN/proxy error document as if it came from the requested page.
+                status_code = metadata.get("statusCode")
+                if status_code is None:
+                    status_code = metadata.get("status_code")
+                if (
+                    isinstance(status_code, int)
+                    and not isinstance(status_code, bool)
+                    and status_code >= 400
+                ):
+                    results.append(
+                        {
+                            "url": final_url,
+                            "title": title,
+                            "content": "",
+                            "raw_content": "",
+                            "metadata": metadata,
+                            "error": f"Upstream server returned HTTP {status_code}",
                         }
                     )
                     continue

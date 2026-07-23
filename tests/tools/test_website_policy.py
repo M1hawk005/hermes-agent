@@ -404,7 +404,12 @@ class TestWebToolPolicy:
         assert "Blocked by website policy" in result["results"][0]["error"]
 
     @pytest.mark.asyncio
-    async def test_web_extract_blocks_redirected_final_url(self, monkeypatch):
+    @pytest.mark.parametrize("source_url_key", ["sourceURL", "source_url"])
+    async def test_web_extract_blocks_redirected_final_url(
+        self,
+        monkeypatch,
+        source_url_key,
+    ):
         from tools import web_tools
         from plugins.web.firecrawl import provider as firecrawl_provider
 
@@ -433,7 +438,7 @@ class TestWebToolPolicy:
                     "markdown": "secret content",
                     "metadata": {
                         "title": "Redirected",
-                        "sourceURL": "https://blocked.test/final",
+                        source_url_key: "https://blocked.test/final",
                     },
                 }
 
