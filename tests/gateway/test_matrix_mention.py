@@ -47,6 +47,7 @@ def _make_event(
     formatted_body=None,
     thread_id=None,
     mention_user_ids=None,
+    mention_room=False,
 ):
     """Create a fake room message event.
 
@@ -59,8 +60,12 @@ def _make_event(
         content["formatted_body"] = formatted_body
         content["format"] = "org.matrix.custom.html"
 
-    if mention_user_ids is not None:
-        content["m.mentions"] = {"user_ids": mention_user_ids}
+    if mention_user_ids is not None or mention_room:
+        content["m.mentions"] = {}
+        if mention_user_ids is not None:
+            content["m.mentions"]["user_ids"] = mention_user_ids
+        if mention_room:
+            content["m.mentions"]["room"] = True
 
     relates_to = {}
     if thread_id:
@@ -146,6 +151,13 @@ class TestIsBotMentioned:
         assert not self.adapter._is_bot_mentioned(
             "hello everyone",
             mention_user_ids=None,
+        )
+
+    def test_m_mentions_room_authoritative(self):
+        """m.mentions.room activates every bot in the room."""
+        assert self.adapter._is_bot_mentioned(
+            "please reply",
+            room_mentioned=True,
         )
 
 
@@ -345,6 +357,20 @@ async def test_require_mention_m_mentions_other_user_ignored(monkeypatch):
 
     await adapter._on_room_message(event)
     adapter.handle_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_require_mention_m_mentions_room(monkeypatch):
+    """A structured Matrix @room mention satisfies require_mention."""
+    monkeypatch.delenv("MATRIX_REQUIRE_MENTION", raising=False)
+    monkeypatch.delenv("MATRIX_FREE_RESPONSE_ROOMS", raising=False)
+    monkeypatch.setenv("MATRIX_AUTO_THREAD", "false")
+
+    adapter = _make_adapter()
+    event = _make_event("please reply", mention_room=True)
+
+    await adapter._on_room_message(event)
+    adapter.handle_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -2756,12 +2756,23 @@ class MatrixAdapter(BasePlatformAdapter):
             thread_id = relates_to.get("event_id")
 
         formatted_body = source_content.get("formatted_body")
-        # m.mentions.user_ids (MSC3952 / Matrix v1.7) — authoritative mention signal.
+        # m.mentions.room and user_ids (MSC3952 / Matrix v1.7) are
+        # authoritative mention signals.
         mentions_block = source_content.get("m.mentions") or {}
         mention_user_ids = (
             mentions_block.get("user_ids") if isinstance(mentions_block, dict) else None
         )
-        is_mentioned = self._is_bot_mentioned(body, formatted_body, mention_user_ids)
+        room_mentioned = (
+            mentions_block.get("room") is True
+            if isinstance(mentions_block, dict)
+            else False
+        )
+        is_mentioned = self._is_bot_mentioned(
+            body,
+            formatted_body,
+            mention_user_ids,
+            room_mentioned=room_mentioned,
+        )
 
         # Require-mention gating.
         if not is_dm:
@@ -4267,17 +4278,20 @@ class MatrixAdapter(BasePlatformAdapter):
         body: str,
         formatted_body: Optional[str] = None,
         mention_user_ids: Optional[list] = None,
+        room_mentioned: bool = False,
     ) -> bool:
         """Return True if the bot is mentioned in the message.
 
-        Per MSC3952, ``m.mentions.user_ids`` is the authoritative mention
-        signal in the Matrix spec.  When the sender's client populates that
-        field with the bot's user-id, we trust it — even when the visible
-        body text does not contain an explicit ``@bot`` string (some clients
-        only render mention "pills" in ``formatted_body`` or use display
-        names).
+        Per MSC3952, ``m.mentions.room`` and ``m.mentions.user_ids`` are
+        authoritative mention signals in the Matrix spec. A room-wide mention
+        activates every bot in the room; a user mention activates this bot when
+        its user ID is listed. We trust those fields even when the visible body
+        does not contain an explicit mention string.
         """
-        # m.mentions.user_ids — authoritative per MSC3952 / Matrix v1.7.
+        # m.mentions.room and m.mentions.user_ids are authoritative per
+        # MSC3952 / Matrix v1.7.
+        if room_mentioned:
+            return True
         if mention_user_ids and self._user_id and self._user_id in mention_user_ids:
             return True
         if not body and not formatted_body:
